@@ -8,6 +8,7 @@ from scapy.layers.dns import DNSRR, DNS
 from scapy.layers.inet import IP, UDP
 from scapy.sendrecv import send, sniff
 
+
 class DNSServer:
     __dictDomains: dict
     __ip: str
