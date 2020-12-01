@@ -3,7 +3,6 @@ import json
 import socket
 from scapy.arch import get_if_addr
 from scapy.config import conf
-from scapy.layers import dns
 from scapy.layers.dns import DNSRR, DNS
 from scapy.layers.inet import IP, UDP
 from scapy.sendrecv import send, sniff
@@ -30,6 +29,13 @@ class DNSServer:
 
     def getDNSIP(self):
         return self.__ip
+
+    def quitwww(self, host):
+        if host[0] == 'w' and host[1] == 'w' and host[2] == 'w' and host[3] == '.':
+            newhost = host[4:]
+        else:
+            newhost = host
+        return newhost
 
     @staticmethod
     def generatePacket(packet, host, resolvedIP, ip, udp):
@@ -60,6 +66,8 @@ class DNSServer:
 
         if hasattr(packet, 'qd') and packet.qd is not None:
             host = packet.qd.qname[:-1].decode("utf-8")
+            host = self.quitwww(host)
+
             if host is not None:
                 if host in self.__dictDomains:
                     resolvedIP = self.__dictDomains[host]
@@ -69,11 +77,7 @@ class DNSServer:
                         resolvedIP = socket.gethostbyname(host)
                         print("[*] Client request %s %s" % (host, resolvedIP))
                     except:
-                        try:
-                            resolvedIP = dns.resolver.resolve(host, 'A')
-                            print("[*] Client request %s %s" % (host, resolvedIP))
-                        except:
-                            resolvedIP = None
+                        resolvedIP = None
 
                 # DNS response
                 if resolvedIP is not None:
