@@ -38,7 +38,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="This script is a plain text credentials sniffer. It will show you HTTP POST. "
                                                  "It is developed to be used in man in the middle attacks (maybe with a dhcp server?). "
                                                  "If you are using it with a dhcp server, you need to enable forwarding.")
-    parser.add_argument("-", "--interface", required=False, help="Network interface")
+    parser.add_argument("-i", "--interface", required=False, help="Network interface")
     args = parser.parse_args()
     print("Sniffing HTTP credentials...")
     if args.interface is None:
