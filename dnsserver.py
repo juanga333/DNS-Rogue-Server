@@ -1,3 +1,4 @@
+#!bin/python3
 import argparse
 import json
 import socket
@@ -68,11 +69,9 @@ class DNSServer:
                 else:
                     try:
                         resolvedIP = socket.gethostbyname(host)
-                        #print("[*] Spoofing DNS request. Now %s ip are %s !!!!" % (host, resolvedIP))
                     except:
                         try:
                             resolvedIP = dns.resolver.resolve(host, 'A')
-                            #print("[*] Spoofing DNS request. Now %s ip are %s !!!!" % (host, resolvedIP))
                         except:
                             resolvedIP = None
 
